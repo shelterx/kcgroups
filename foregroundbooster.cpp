@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "foregroundbooster.h"
-#include <KApplicationScope>
 #include <QtCore>
 #include <abstracttasksmodel.h>
 #include <algorithm>
+#include <fstream>
 
 using namespace TaskManager;
 
@@ -18,6 +18,26 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
 {
     connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
     connect(m_tasksModel, &TasksModel::rowsAboutToBeRemoved, this, &ForegroundBooster::onWindowRemoved);
+
+    CGroupDeviceMemoryLimit limit;
+
+    std::ifstream capacityStream = std::ifstream("/sys/fs/cgroup/dmem.capacity");
+    if (capacityStream.is_open()) {
+       for (std::string line; std::getline(capacityStream, line); ) {
+          auto spacePos = line.find(' ');
+          if (spacePos == std::string::npos)
+             continue;
+          const auto device = line.substr(0, spacePos);
+          limit.path = QString::fromStdString(device);
+
+          const unsigned long value = std::stoul(line.substr(spacePos + 1, line.size()));
+
+          limit.limit = value;
+          m_boostedGPUMemoryLimit.push_back(limit);
+          limit.limit = 0;
+          m_nonBoostedGPUMemoryLimit.push_back(limit);
+       }
+    }
 }
 
 ForegroundBooster::~ForegroundBooster()
@@ -85,11 +105,13 @@ void ForegroundBooster::onActiveWindowChanged()
         if (prevApp != nullptr) {
             qInfo() << "resetting" << prevApp->id() << "weight to default";
             prevApp->setCpuWeight(OptionalQULongLong());
+            prevApp->setDeviceMemoryLow(m_nonBoostedGPUMemoryLimit);
         }
         if (currentApp != nullptr) {
             qInfo() << "setting" << currentApp->id() << "weight to" << (float)m_settings->boostedCpuWeight() / 100.
                     << "times normal weight";
             currentApp->setCpuWeight(m_settings->boostedCpuWeight());
+            currentApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
         }
     } else {
         qDebug() << "Changed to different window of same app";

@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QObject>
 #include <tasksmodel.h>
+#include <KApplicationScope>
 
 class KApplicationScope;
 
@@ -28,6 +29,9 @@ private:
     uint m_currentPid;
     QString m_currentAppid;
     QHash<uint, KApplicationScope *> m_appsByPid;
+
+   CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;
+   CGroupDeviceMemoryLimitList m_nonBoostedGPUMemoryLimit;
 };
 
 #endif // FOREGROUNDBOOSTER_H
