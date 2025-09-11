@@ -35,6 +35,7 @@ public:
     OptionalQULongLong m_memoryMin;
     OptionalQULongLong m_memoryMax;
     OptionalQULongLong m_memorySwapMax;
+    OptionalCGroupDBusDeviceMemoryLimit m_deviceMemoryLow;
     QString m_path;
     QString m_id;
     QString m_cgroup;

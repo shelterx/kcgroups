@@ -8,6 +8,7 @@
 #define GENERIC_TYPES_H
 
 #include <QDBusArgument>
+#include "kapplicationscope.h"
 
 /**
  * DbusUnit
@@ -59,6 +60,30 @@ inline const QDBusArgument &operator>>(const QDBusArgument &argument,
 {
     argument.beginStructure();
     argument >> cGroupBlockIODeviceWeight.path >> cGroupBlockIODeviceWeight.weight;
+    argument.endStructure();
+    return argument;
+}
+
+/**
+ * CGroupDBusDeviceMemoryLimit
+ */
+Q_DECLARE_METATYPE(CGroupDeviceMemoryLimit)
+Q_DECLARE_METATYPE(CGroupDeviceMemoryLimitList)
+
+inline QDBusArgument &operator<<(QDBusArgument &argument,
+                                 const CGroupDeviceMemoryLimit &cGroupMemoryLimit)
+{
+    argument.beginStructure();
+    argument << cGroupMemoryLimit.path
+             << cGroupMemoryLimit.limit;
+    argument.endStructure();
+    return argument;
+}
+
+inline const QDBusArgument &operator>>(const QDBusArgument &argument, CGroupDeviceMemoryLimit &cGroupMemoryLimit)
+{
+    argument.beginStructure();
+    argument >> cGroupMemoryLimit.path >> cGroupMemoryLimit.limit;
     argument.endStructure();
     return argument;
 }

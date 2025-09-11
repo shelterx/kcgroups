@@ -7,6 +7,9 @@
 #include "kapplicationscope_p.h"
 #include "kcgroups_debug.h"
 #include "managerinterface.h"
+
+#include <fstream>
+#include <iostream>
 #include <limits>
 
 static const Property<OptionalQULongLong> cpuQuotaProp = {&KApplicationScopePrivate::m_cpuQuota,
@@ -171,6 +174,32 @@ OptionalQULongLong KApplicationScope::memorySwapMax() const
     return d_ptr->getProperty<OptionalQULongLong>(memorySwapMaxProp);
 }
 
+OptionalCGroupDBusDeviceMemoryLimit KApplicationScope::deviceMemoryLow() const
+{
+    /* TODO: Once a systemd interface is stabilized, switch from manipulating cgroup values directly to telling
+     * systemd to do it via DBus.
+     */
+    std::ifstream capacityStream = std::ifstream(cgroup().toStdString() + "/dmem.low");
+    if (capacityStream.is_open()) {
+       CGroupDeviceMemoryLimitList limits;
+       for (std::string line; std::getline(capacityStream, line); ) {
+          auto spacePos = line.find(' ');
+          if (spacePos == std::string::npos)
+             continue;
+          const auto device = line.substr(0, spacePos);
+          CGroupDeviceMemoryLimit limit;
+          limit.path = QString::fromStdString(device);
+
+          const unsigned long value = std::stoul(line.substr(spacePos + 1, line.size()));
+
+          limit.limit = value;
+          limits.push_back(limit);
+       }
+        return limits;
+    }
+    return {};
+}
+
 void KApplicationScope::setCpuQuota(const OptionalQULongLong &quota)
 {
     d_ptr->trySetProperty<OptionalQULongLong>(cpuQuotaProp, quota);
@@ -216,6 +245,27 @@ void KApplicationScope::setMemorySwapMax(const OptionalQULongLong &memorySwapMax
     d_ptr->trySetProperty<OptionalQULongLong>(memorySwapMaxProp, memorySwapMax);
 }
 
+void KApplicationScope::setDeviceMemoryLow(const OptionalCGroupDBusDeviceMemoryLimit &deviceMemoryLow)
+{
+    /* TODO: Once a systemd interface is stabilized, switch from manipulating cgroup values directly to telling
+     * systemd to do it via DBus.
+     */
+    if (!deviceMemoryLow.has_value())
+        return;
+    auto& list = deviceMemoryLow.value();
+
+    std::string path = cgroup().toStdString() + "/dmem.low";
+    std::ofstream capacityStream = std::ofstream(path);
+    if (capacityStream.is_open()) {
+        for (auto& limit : list) {
+            capacityStream << limit.path.toStdString() << " " << limit.limit << std::endl;
+            qCDebug(KCGROUPS_LOG) << "Writing dmem limit" << limit.path << " " << limit.limit << "";
+        }
+    } else {
+        qCWarning(KCGROUPS_LOG) << "Can't open dmem " << QString::fromStdString(path) << "!";
+    }
+}
+
 void KApplicationScope::stop()
 {
     d_ptr->stop();
@@ -258,6 +308,8 @@ KApplicationScopePrivate::KApplicationScopePrivate(const QString &path, const QS
     parseId();
     qDBusRegisterMetaType<QVariantMultiMap>();
     qDBusRegisterMetaType<QVariantMultiItem>();
+    qDBusRegisterMetaType<CGroupDeviceMemoryLimitList>();
+    qDBusRegisterMetaType<CGroupDeviceMemoryLimit>();
 
     // Try to fill cache for all properties.
     const auto interface = path.endsWith(QStringLiteral("_2escope")) ? systemd1Scope
@@ -313,7 +365,7 @@ template<typename T>
 QVariant KApplicationScopePrivate::defaultIfNull(const Property<T> &prop, const T &opt)
 {
     // Convert null value to default if there is one
-    return opt ? *opt : prop.hasDefault ? prop.defaultValue : QVariant();
+    return opt ? QVariant::fromValue(*opt) : prop.hasDefault ? QVariant::fromValue(prop.defaultValue) : QVariant();
 }
 
 template<typename T>
@@ -345,6 +397,7 @@ template<typename T>
 void KApplicationScopePrivate::trySetProperty(const Property<T> &prop, T opt)
 {
     if (this->*prop.privateMember != opt) {
+        auto stdString = prop.systemdName.toStdString();
         saveProperty(prop, opt);
         const auto reply = m_unit->SetProperties(true, {{prop.systemdName, defaultIfNull(prop, opt)}});
         const auto *watcher = new QDBusPendingCallWatcher(reply, q_ptr);
@@ -387,7 +440,7 @@ void KApplicationScopePrivate::handleGetAllCallFinished(QDBusPendingCallWatcher 
             if (qullProps.contains(k)) {
                 saveIfNull<OptionalQULongLong>(*qullProps[k], v);
             } else if (k == QStringLiteral("ControlGroup")) {
-                m_cgroup = QStringLiteral("/sys/fs/cgroup/systemd") + v.toString();
+                m_cgroup = QStringLiteral("/sys/fs/cgroup") + v.toString();
                 emit q_ptr->cgroupChanged(m_cgroup);
                 emit q_ptr->propertyChanged(k);
             }

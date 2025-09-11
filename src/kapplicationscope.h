@@ -9,9 +9,26 @@
 #include "optionalgadget.h"
 #include <QObject>
 
+using CGroupDeviceMemoryLimit = struct CGroupDeviceMemoryLimit {
+    QString path;
+    qulonglong limit;
+};
+using CGroupDeviceMemoryLimitList = QList<CGroupDeviceMemoryLimit>;
+
+inline bool operator==(const CGroupDeviceMemoryLimit &lhs, const CGroupDeviceMemoryLimit &rhs)
+{
+    return lhs.path == rhs.path && lhs.limit == rhs.limit;
+}
+
+inline bool operator!=(const CGroupDeviceMemoryLimit & lhs, const CGroupDeviceMemoryLimit &rhs)
+{
+    return lhs.path != rhs.path || lhs.limit != rhs.limit;
+}
+
 class KApplicationScopePrivate;
 
 OPTIONAL_GADGET(qulonglong, OptionalQULongLong);
+OPTIONAL_GADGET(CGroupDeviceMemoryLimitList, OptionalCGroupDBusDeviceMemoryLimit);
 
 /**
  * @brief A desktop application in a systemd transient scope
@@ -138,6 +155,14 @@ class KCGROUPS_EXPORT KApplicationScope : public QObject
      */
     Q_PROPERTY(OptionalQULongLong memorySwapMax READ memorySwapMax WRITE setMemorySwapMax NOTIFY memorySwapMaxChanged)
 
+    /**
+     * @brief best-effort GPU memory usage protection (in bytes) of all executed processes within the application.
+     * @accessors deviceMemoryLow(), setDeviceMemoryLow()
+     * @notifySignal deviceMemoryLowChanged()
+     */
+    Q_PROPERTY(OptionalCGroupDBusDeviceMemoryLimit deviceMemoryLow READ deviceMemoryLow WRITE setDeviceMemoryLow NOTIFY
+                   deviceMemoryLowChanged)
+
 public:
     /**
      * @brief The types of errors that can occur
@@ -208,6 +233,8 @@ public:
     OptionalQULongLong memoryMin() const;
     OptionalQULongLong memoryMax() const;
     OptionalQULongLong memorySwapMax() const;
+
+    OptionalCGroupDBusDeviceMemoryLimit deviceMemoryLow() const;
 
 Q_SIGNALS:
     /**
@@ -312,6 +339,12 @@ Q_SIGNALS:
      */
     void memorySwapMaxChanged(const OptionalQULongLong &memorySwapMax);
 
+    /**
+     * @brief emitted when deviceMemoryLow has changed
+     * @param gpuMemoryLow: the new deviceMemoryLow value
+     */
+    void deviceMemoryLowChanged(const OptionalCGroupDBusDeviceMemoryLimit &gpuMemoryLow);
+
 public Q_SLOTS:
     /**
      * @brief Stops the application
@@ -371,6 +404,12 @@ public Q_SLOTS:
      * @param memorySwapMax: value to set
      */
     void setMemorySwapMax(const OptionalQULongLong &memorySwapMax);
+
+    /**
+     * @brief set deviceMemoryLow
+     * @param deviceMemoryLow: value to set
+     */
+    void setDeviceMemoryLow(const OptionalCGroupDBusDeviceMemoryLimit &deviceMemoryLow);
 
 private:
     KApplicationScopePrivate *const d_ptr;
