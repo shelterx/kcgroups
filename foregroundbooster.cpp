@@ -70,13 +70,13 @@ void ForegroundBooster::onActiveWindowChanged()
 
     qDebug() << "";
     if (!isWindow) {
-        qWarning() << "NOT WINDOW" << pid;
+        qDebug() << "NOT WINDOW" << pid;
 
         return;
     }
 
     if (pid == m_currentPid) {
-        qWarning() << "SAME PID" << appid;
+        qDebug() << "SAME PID" << appid;
         return;
     }
 
@@ -103,12 +103,12 @@ void ForegroundBooster::onActiveWindowChanged()
 
     if (prevApp != currentApp) {
         if (prevApp != nullptr) {
-            qInfo() << "resetting" << prevApp->id() << "weight to default";
+            qDebug() << "resetting" << prevApp->id() << "weight to default";
             prevApp->setCpuWeight(OptionalQULongLong());
             prevApp->setDeviceMemoryLow(m_nonBoostedGPUMemoryLimit);
         }
         if (currentApp != nullptr) {
-            qInfo() << "setting" << currentApp->id() << "weight to" << (float)m_settings->boostedCpuWeight() / 100.
+            qDebug() << "setting" << currentApp->id() << "weight to" << (float)m_settings->boostedCpuWeight() / 100.
                     << "times normal weight";
             currentApp->setCpuWeight(m_settings->boostedCpuWeight());
             currentApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
