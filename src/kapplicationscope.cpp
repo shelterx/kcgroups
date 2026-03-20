@@ -315,15 +315,18 @@ KApplicationScopePrivate::KApplicationScopePrivate(const QString &path, const QS
     const auto interface = path.endsWith(QStringLiteral("_2escope")) ? systemd1Scope
         : path.endsWith(QStringLiteral("_2eslice"))                  ? systemd1Slice
                                                                      : systemd1Service;
-    const auto *getAllWatcher = new QDBusPendingCallWatcher(m_properties->GetAll(interface), q_ptr);
-    QObject::connect(getAllWatcher, &QDBusPendingCallWatcher::finished, q_ptr, [this](QDBusPendingCallWatcher *w) {
+    auto getAllWatcher = QDBusPendingCallWatcher(m_properties->GetAll(interface), q_ptr);
+    QObject::connect(&getAllWatcher, &QDBusPendingCallWatcher::finished, q_ptr, [this](QDBusPendingCallWatcher *w) {
         handleGetAllCallFinished(w);
     });
 
-    const auto *unitGetAllWatcher = new QDBusPendingCallWatcher(m_properties->GetAll(systemd1Unit));
-    QObject::connect(unitGetAllWatcher, &QDBusPendingCallWatcher::finished, q_ptr, [this](QDBusPendingCallWatcher *w) {
+    auto unitGetAllWatcher = QDBusPendingCallWatcher(m_properties->GetAll(systemd1Unit));
+    QObject::connect(&unitGetAllWatcher, &QDBusPendingCallWatcher::finished, q_ptr, [this](QDBusPendingCallWatcher *w) {
         handleGetUnitCallFinished(w);
     });
+
+    getAllWatcher.waitForFinished();
+    unitGetAllWatcher.waitForFinished();
 }
 
 static const QRegularExpression appPattern(QStringLiteral("^apps?-(.+?)(?:-([^-]+))?\\.(scope|service|slice)$"));
