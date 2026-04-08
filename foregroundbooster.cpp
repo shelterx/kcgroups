@@ -63,7 +63,34 @@ void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, in
 
 void ForegroundBooster::onActiveWindowChanged()
 {
-    const auto activeTaskIndex = m_tasksModel->activeTask();
+    auto activeTaskIndex = m_tasksModel->activeTask();
+    if (!m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow)
+             .toBool()) {
+       activeTaskIndex = {};
+       for (int i = 0; i < m_tasksModel->rowCount(); ++i) {
+          const QModelIndex &idx = m_tasksModel->makeModelIndex(i);
+
+          if (idx.data(AbstractTasksModel::IsActive).toBool()) {
+             if (idx.data(AbstractTasksModel::IsWindow).toBool()) {
+                activeTaskIndex = idx;
+                break;
+             }
+             if (m_tasksModel->groupMode() != TasksModel::GroupDisabled
+                 && m_tasksModel->rowCount(idx)) {
+                for (int j = 0; j < m_tasksModel->rowCount(idx); ++j) {
+                   const QModelIndex &child
+                       = m_tasksModel->makeModelIndex(i, j);
+
+                   if (child.data(AbstractTasksModel::IsWindow).toBool()) {
+                      activeTaskIndex = child;
+                      break;
+                   }
+                }
+             }
+          }
+       }
+    }
+
     const auto appid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppId).toString();
     const auto pid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppPid).toUInt();
     const auto isWindow = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow).toBool();
