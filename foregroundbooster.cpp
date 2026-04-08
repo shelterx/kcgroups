@@ -16,8 +16,21 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
     , m_settings(new BoosterSettings(this))
 
 {
-    connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
-    connect(m_tasksModel, &TasksModel::rowsAboutToBeRemoved, this, &ForegroundBooster::onWindowRemoved);
+   connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
+   connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
+   connect(m_tasksModel,
+           &TasksModel::dataChanged,
+           [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles) {
+               Q_UNUSED(topLeft)
+               Q_UNUSED(bottomRight)
+               if (roles.contains(AbstractTasksModel::IsWindow) || roles.isEmpty()) {
+                   onActiveWindowChanged();
+               }
+           });
+   connect(m_tasksModel, &TasksModel::activityChanged, this, &ForegroundBooster::onActiveWindowChanged);
+   connect(m_tasksModel, &TasksModel::virtualDesktopChanged, this, &ForegroundBooster::onActiveWindowChanged);
+   connect(m_tasksModel, &TasksModel::countChanged, this, &ForegroundBooster::onActiveWindowChanged);
+   connect(m_tasksModel, &TasksModel::rowsAboutToBeRemoved, this, &ForegroundBooster::onWindowRemoved);
 
     CGroupDeviceMemoryLimit limit;
 
