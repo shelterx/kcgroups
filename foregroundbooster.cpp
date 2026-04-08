@@ -63,6 +63,7 @@ void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, in
 
 void ForegroundBooster::onActiveWindowChanged()
 {
+    qDebug() << "Checking active tasks";
     auto activeTaskIndex = m_tasksModel->activeTask();
     if (!m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow)
              .toBool()) {
@@ -74,6 +75,9 @@ void ForegroundBooster::onActiveWindowChanged()
              if (idx.data(AbstractTasksModel::IsWindow).toBool()) {
                 activeTaskIndex = idx;
                 break;
+             } else {
+                const auto pid = m_tasksModel->data(idx, AbstractTasksModel::AppPid).toUInt();
+                qDebug() << "No window detected, checking group children: " << pid;
              }
              if (m_tasksModel->groupMode() != TasksModel::GroupDisabled
                  && m_tasksModel->rowCount(idx)) {
@@ -86,16 +90,23 @@ void ForegroundBooster::onActiveWindowChanged()
                       break;
                    }
                 }
+                if (activeTaskIndex != QModelIndex{}) {
+                   break;
+                }
              }
           }
        }
+    }
+
+    if (activeTaskIndex == QModelIndex{}) {
+       qDebug() << "No active task found";
+       return;
     }
 
     const auto appid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppId).toString();
     const auto pid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppPid).toUInt();
     const auto isWindow = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow).toBool();
 
-    qDebug() << "";
     if (!isWindow) {
         qDebug() << "NOT WINDOW" << pid;
 
