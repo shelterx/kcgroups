@@ -80,8 +80,8 @@ void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, in
                     qDebug() << "Removing" << app->id() << "from cache";
                 }
                 delete app;
+                m_appsByPid.remove(pid);
             }
-            m_appsByPid.remove(pid);
         }
     }
 }
@@ -216,4 +216,13 @@ void ForegroundBooster::onSwitchTimeout()
     m_currentPid = pid;
     m_currentAppid = appid;
     m_currentApp = currentApp;
+
+    // If the old scope was evicted from the hash by onWindowRemoved,
+    // it is safe to delete it now that we've finished using it.
+    if (prevApp != nullptr && prevApp != currentApp) {
+        if (!m_appsByPid.values().contains(prevApp)) {
+            qDebug() << "Cleaning up evicted scope:" << prevApp->id();
+            delete prevApp;
+        }
+    }
 }
