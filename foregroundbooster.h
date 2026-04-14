@@ -7,6 +7,7 @@
 #include "boostersettings.h"
 #include <QHash>
 #include <QObject>
+#include <QTimer>
 #include <tasksmodel.h>
 #include <KApplicationScope>
 
@@ -21,6 +22,7 @@ public:
 public Q_SLOTS:
     void onActiveWindowChanged();
     void onWindowRemoved(const QModelIndex &parent, int first, int last);
+    void onSwitchTimeout();
 
 private:
     TaskManager::TasksModel *m_tasksModel;
@@ -29,6 +31,7 @@ private:
     uint m_currentPid;
     QString m_currentAppid;
     KApplicationScope *m_currentApp;
+    QTimer m_debounceTimer;
     QHash<uint, KApplicationScope *> m_appsByPid;
 
    CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;
