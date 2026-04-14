@@ -14,6 +14,7 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
     : QObject(parent)
     , m_tasksModel(new TasksModel(this))
     , m_settings(new BoosterSettings(this))
+    , m_currentApp(nullptr)
 
 {
    connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
@@ -64,11 +65,17 @@ void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, in
         const auto pid = m_tasksModel->data(index, AbstractTasksModel::AppPid).toUInt();
 
         if (m_appsByPid.contains(pid)) {
-            const auto app = m_appsByPid.value(pid);
-            if (app) {
-                qDebug() << "Removing" << app->id() << "from cache";
+            KApplicationScope *app = m_appsByPid.value(pid);
+            // CRITICAL: If this is the currently boosted scope, do NOT delete it.
+            // We need it to reset the weight later.
+            if (app == m_currentApp) {
+                qDebug() << "Keeping active scope in cache:" << app->id();
+            } else {
+                if (app) {
+                    qDebug() << "Removing" << app->id() << "from cache";
+                }
+                delete app;
             }
-            delete app;
             m_appsByPid.remove(pid);
         }
     }
@@ -131,7 +138,7 @@ void ForegroundBooster::onActiveWindowChanged()
         return;
     }
 
-    const auto prevApp = m_appsByPid.value(m_currentPid);
+    const auto prevApp = m_currentApp;
     qDebug() << "Switching from" << m_currentAppid << "to" << appid;
 
     KApplicationScope *currentApp;
@@ -169,4 +176,5 @@ void ForegroundBooster::onActiveWindowChanged()
     }
     m_currentPid = pid;
     m_currentAppid = appid;
+    m_currentApp = currentApp;
 }

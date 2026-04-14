@@ -28,6 +28,7 @@ private:
     BoosterSettings *m_settings;
     uint m_currentPid;
     QString m_currentAppid;
+    KApplicationScope *m_currentApp;
     QHash<uint, KApplicationScope *> m_appsByPid;
 
    CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;
