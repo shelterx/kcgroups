@@ -14,6 +14,7 @@
 class KApplicationScope;
 
 class ForegroundBooster : public QObject {
+    Q_OBJECT
 public:
   ForegroundBooster(QObject *parent = nullptr);
   ~ForegroundBooster();
