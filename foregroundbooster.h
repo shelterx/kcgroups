@@ -32,6 +32,7 @@ private:
     QString m_currentAppid;
     KApplicationScope *m_currentApp;
     QTimer m_debounceTimer;
+    bool m_currentAppOrphaned = false;
     QHash<uint, KApplicationScope *> m_appsByPid;
 
    CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;

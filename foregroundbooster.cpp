@@ -75,6 +75,8 @@ void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, in
             // We need it to reset the weight later.
             if (app == m_currentApp) {
                 qDebug() << "Keeping active scope in cache:" << app->id();
+                m_appsByPid.remove(pid);
+                m_currentAppOrphaned = true;
             } else {
                 if (app) {
                     qDebug() << "Removing" << app->id() << "from cache";
@@ -219,10 +221,9 @@ void ForegroundBooster::onSwitchTimeout()
 
     // If the old scope was evicted from the hash by onWindowRemoved,
     // it is safe to delete it now that we've finished using it.
-    if (prevApp != nullptr && prevApp != currentApp) {
-        if (!m_appsByPid.values().contains(prevApp)) {
-            qDebug() << "Cleaning up evicted scope:" << prevApp->id();
-            delete prevApp;
-        }
+    if (prevApp != nullptr && prevApp != currentApp && m_currentAppOrphaned) {
+        qDebug() << "Cleaning up evicted scope:" << prevApp->id();
+        delete prevApp;
     }
+    m_currentAppOrphaned = false;
 }
