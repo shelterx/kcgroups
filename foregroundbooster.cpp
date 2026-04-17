@@ -60,6 +60,11 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
 
 ForegroundBooster::~ForegroundBooster()
 {
+    // Clean up all cached scopes
+    qDeleteAll(m_appsByPid);
+    if (m_currentAppOrphaned) {
+        delete m_currentApp;
+    }
 }
 
 void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, int last)
@@ -183,17 +188,17 @@ void ForegroundBooster::onSwitchTimeout()
     KApplicationScope *currentApp = m_appsByPid.value(pid);
     const auto prevApp = m_currentApp;
 
-    if (currentApp == nullptr) {
+    if (!m_appsByPid.contains(pid)) {
         currentApp = KApplicationScope::fromPid(pid, this);
-        m_appsByPid[pid] = currentApp;
         if (currentApp == nullptr) {
-            m_currentPid = pid;
-            m_currentAppid = appid;
-            m_currentApp = currentApp;
-            return;
+        m_currentPid = pid;
+        m_currentAppid = appid;
+        m_currentApp = currentApp;
+        return;
         }
+        m_appsByPid[pid] = currentApp;
     }
-
+    
     if (prevApp != currentApp) {
         if (prevApp != nullptr) {
             // Only reset if switching to a DIFFERENT cgroup.
