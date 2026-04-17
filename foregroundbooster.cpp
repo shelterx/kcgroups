@@ -125,6 +125,7 @@ void ForegroundBooster::onSwitchTimeout()
     const bool nowIsGame = appid.startsWith(QLatin1String("steam_app"));
     if (appid == m_currentAppid && prevWasGame && nowIsGame) {
         qDebug() << "Switch cancelled: same game window (PID flicker)" << appid;
+        m_currentPid = pid;
         return;
     }
 
