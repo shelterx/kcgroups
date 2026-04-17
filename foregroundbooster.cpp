@@ -155,16 +155,22 @@ void ForegroundBooster::onSwitchTimeout()
             qDebug() << "[RESET] Clearing weight for" << prevApp->id();
             prevApp->setCpuWeight(OptionalQULongLong());
             prevApp->setDeviceMemoryLow(m_nonBoostedGPUMemoryLimit);
-        } else {
-            qDebug() << "[SKIP RESET] Same cgroup scope" << prevApp->id();
-        }
-        delete prevApp;
-    }
+            delete prevApp;
 
-    qDebug() << "[BOOST] Setting weight to" << m_settings->boostedCpuWeight()
-             << "for" << newApp->id();
-    newApp->setCpuWeight(m_settings->boostedCpuWeight());
-    newApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
+            qDebug() << "[BOOST] Setting weight to" << m_settings->boostedCpuWeight()
+                     << "for" << newApp->id();
+            newApp->setCpuWeight(m_settings->boostedCpuWeight());
+            newApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
+        } else {
+            qDebug() << "[SKIP] Same cgroup scope, keeping boost as-is:" << newApp->id();
+            delete prevApp;
+        }
+    } else {
+        qDebug() << "[BOOST] Setting weight to" << m_settings->boostedCpuWeight()
+                 << "for" << newApp->id();
+        newApp->setCpuWeight(m_settings->boostedCpuWeight());
+        newApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
+    }
 
     m_currentPid = pid;
     m_currentAppid = appid;
