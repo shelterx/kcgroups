@@ -5,7 +5,6 @@
 #include "foregroundbooster.h"
 #include <QtCore>
 #include <abstracttasksmodel.h>
-#include <algorithm>
 #include <fstream>
 
 using namespace TaskManager;
@@ -14,159 +13,159 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
     : QObject(parent)
     , m_tasksModel(new TasksModel(this))
     , m_settings(new BoosterSettings(this))
-
+    , m_debounceTimer(this)
 {
-   connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
-   connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
-   connect(m_tasksModel,
-           &TasksModel::dataChanged,
-           [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles) {
-               Q_UNUSED(topLeft)
-               Q_UNUSED(bottomRight)
-               if (roles.contains(AbstractTasksModel::IsWindow) || roles.isEmpty()) {
-                   onActiveWindowChanged();
-               }
-           });
-   connect(m_tasksModel, &TasksModel::activityChanged, this, &ForegroundBooster::onActiveWindowChanged);
-   connect(m_tasksModel, &TasksModel::virtualDesktopChanged, this, &ForegroundBooster::onActiveWindowChanged);
-   connect(m_tasksModel, &TasksModel::countChanged, this, &ForegroundBooster::onActiveWindowChanged);
-   connect(m_tasksModel, &TasksModel::rowsAboutToBeRemoved, this, &ForegroundBooster::onWindowRemoved);
+    m_debounceTimer.setSingleShot(true);
+    connect(&m_debounceTimer, &QTimer::timeout, this, &ForegroundBooster::onSwitchTimeout);
+
+    connect(m_tasksModel, &TasksModel::activeTaskChanged, this, &ForegroundBooster::onActiveWindowChanged);
+    connect(m_tasksModel, &TasksModel::activityChanged, this, &ForegroundBooster::onActiveWindowChanged);
+    connect(m_tasksModel,
+            &TasksModel::dataChanged,
+            [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles) {
+                Q_UNUSED(topLeft)
+                Q_UNUSED(bottomRight)
+                if (roles.contains(AbstractTasksModel::IsWindow)
+                    || roles.contains(AbstractTasksModel::AppPid)
+                    || roles.isEmpty()) {
+                    m_debounceTimer.start(200);
+                }
+            });
+    connect(m_tasksModel, &TasksModel::virtualDesktopChanged, this, &ForegroundBooster::onActiveWindowChanged);
+    connect(m_tasksModel, &TasksModel::countChanged, this, &ForegroundBooster::onActiveWindowChanged);
 
     CGroupDeviceMemoryLimit limit;
 
-    std::ifstream capacityStream = std::ifstream("/sys/fs/cgroup/dmem.capacity");
+    std::ifstream capacityStream("/sys/fs/cgroup/dmem.capacity");
     if (capacityStream.is_open()) {
-       for (std::string line; std::getline(capacityStream, line); ) {
-          auto spacePos = line.find(' ');
-          if (spacePos == std::string::npos)
-             continue;
-          const auto device = line.substr(0, spacePos);
-          limit.path = QString::fromStdString(device);
+        for (std::string line; std::getline(capacityStream, line); ) {
+            auto spacePos = line.find(' ');
+            if (spacePos == std::string::npos)
+                continue;
+            const auto device = line.substr(0, spacePos);
+            limit.path = QString::fromStdString(device);
 
-          const unsigned long value = std::stoul(line.substr(spacePos + 1, line.size()));
+            const unsigned long value = std::stoul(line.substr(spacePos + 1, line.size()));
 
-          limit.limit = value;
-          m_boostedGPUMemoryLimit.push_back(limit);
-          limit.limit = 0;
-          m_nonBoostedGPUMemoryLimit.push_back(limit);
-       }
+            limit.limit = value;
+            m_boostedGPUMemoryLimit.push_back(limit);
+            limit.limit = 0;
+            m_nonBoostedGPUMemoryLimit.push_back(limit);
+        }
     }
 }
 
 ForegroundBooster::~ForegroundBooster()
 {
+    delete m_currentApp;
 }
 
-void ForegroundBooster::onWindowRemoved(const QModelIndex &parent, int first, int last)
+// Helper to find the active window index, checking grouped tasks too
+static QModelIndex findActiveWindowIndex(TaskManager::TasksModel *model)
 {
-    for (int row = first; row <= last; row++) {
-        const auto index = m_tasksModel->index(row, 0, parent);
-        const auto pid = m_tasksModel->data(index, AbstractTasksModel::AppPid).toUInt();
+    auto activeTaskIndex = model->activeTask();
+    if (model->data(activeTaskIndex, AbstractTasksModel::IsWindow).toBool())
+        return activeTaskIndex;
 
-        if (m_appsByPid.contains(pid)) {
-            const auto app = m_appsByPid.value(pid);
-            if (app) {
-                qDebug() << "Removing" << app->id() << "from cache";
+    activeTaskIndex = {};
+    for (int i = 0; i < model->rowCount(); ++i) {
+        const QModelIndex &idx = model->makeModelIndex(i);
+        if (idx.data(AbstractTasksModel::IsActive).toBool()
+            && idx.data(AbstractTasksModel::IsWindow).toBool()) {
+            return idx;
+        }
+        if (model->groupMode() != TasksModel::GroupDisabled
+            && model->rowCount(idx)) {
+            for (int j = 0; j < model->rowCount(idx); ++j) {
+                const QModelIndex &child = model->makeModelIndex(i, j);
+                if (child.data(AbstractTasksModel::IsWindow).toBool()) {
+                    return child;
+                }
             }
-            delete app;
-            m_appsByPid.remove(pid);
         }
     }
+    return {};
 }
 
 void ForegroundBooster::onActiveWindowChanged()
 {
-    qDebug() << "Checking active tasks";
-    auto activeTaskIndex = m_tasksModel->activeTask();
-    if (!m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow)
-             .toBool()) {
-       activeTaskIndex = {};
-       for (int i = 0; i < m_tasksModel->rowCount(); ++i) {
-          const QModelIndex &idx = m_tasksModel->makeModelIndex(i);
+    const auto activeTaskIndex = findActiveWindowIndex(m_tasksModel);
+    if (activeTaskIndex == QModelIndex{}) return;
 
-          if (idx.data(AbstractTasksModel::IsActive).toBool()) {
-             if (idx.data(AbstractTasksModel::IsWindow).toBool()) {
-                activeTaskIndex = idx;
-                break;
-             } else {
-                const auto pid = m_tasksModel->data(idx, AbstractTasksModel::AppPid).toUInt();
-                qDebug() << "No window detected, checking group children: " << pid;
-             }
-             if (m_tasksModel->groupMode() != TasksModel::GroupDisabled
-                 && m_tasksModel->rowCount(idx)) {
-                for (int j = 0; j < m_tasksModel->rowCount(idx); ++j) {
-                   const QModelIndex &child
-                       = m_tasksModel->makeModelIndex(i, j);
+    const auto pid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppPid).toUInt();
+    const auto appid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppId).toString();
+    const auto isWindow = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow).toBool();
 
-                   if (child.data(AbstractTasksModel::IsWindow).toBool()) {
-                      activeTaskIndex = child;
-                      break;
-                   }
-                }
-                if (activeTaskIndex != QModelIndex{}) {
-                   break;
-                }
-             }
-          }
-       }
-    }
+    if (!isWindow) return;
+    if (pid == m_currentPid) return;
 
+    qDebug() << "Window switch pending: " << m_currentAppid << " → " << appid << " (waiting 200 ms)";
+    m_debounceTimer.start(200);
+}
+
+void ForegroundBooster::onSwitchTimeout()
+{
+    const auto activeTaskIndex = findActiveWindowIndex(m_tasksModel);
     if (activeTaskIndex == QModelIndex{}) {
-       qDebug() << "No active task found";
-       return;
+        qDebug() << "Switch cancelled: no active task";
+        return;
     }
 
     const auto appid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppId).toString();
     const auto pid = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::AppPid).toUInt();
-    const auto isWindow = m_tasksModel->data(activeTaskIndex, AbstractTasksModel::IsWindow).toBool();
-
-    if (!isWindow) {
-        qDebug() << "NOT WINDOW" << pid;
-
-        return;
-    }
 
     if (pid == m_currentPid) {
-        qDebug() << "SAME PID" << appid;
+        qDebug() << "Switch cancelled: same PID on timeout" << appid;
         return;
     }
 
-    const auto prevApp = m_appsByPid.value(m_currentPid);
-    qDebug() << "Switching from" << m_currentAppid << "to" << appid;
-
-    KApplicationScope *currentApp;
-
-    if (m_appsByPid.contains(pid)) {
-        currentApp = m_appsByPid[pid];
-        if (currentApp == nullptr) {
-            qDebug() << "Previous unmanaged app focused: appid =" << appid << ", pid =" << pid;
-        } else {
-            qDebug() << "Previous  systemd  app focused:" << currentApp->id() << ", appid =" << appid << ", pid =" << pid;
-        }
-    } else {
-        qDebug() << "New window focused: appid =" << appid << ", pid =" << pid;
-        currentApp = KApplicationScope::fromPid(pid, this);
-        m_appsByPid[pid] = currentApp;
-        if (currentApp == nullptr) {
-            qDebug() << "This new window is not managed by systemd";
-        }
+    // If switching between two game windows with the same appid, skip.
+    // Wine/Proton often changes PIDs without changing the actual window.
+    const bool prevWasGame = m_currentAppid.startsWith(QLatin1String("steam_app"));
+    const bool nowIsGame = appid.startsWith(QLatin1String("steam_app"));
+    if (appid == m_currentAppid && prevWasGame && nowIsGame) {
+        qDebug() << "Switch cancelled: same game window (PID flicker)" << appid;
+        return;
     }
 
-    if (prevApp != currentApp) {
+    qDebug() << "Switch confirmed: " << m_currentAppid << " → " << appid;
+
+    KApplicationScope *newApp = KApplicationScope::fromPid(pid, nullptr);
+    const auto prevApp = m_currentApp;
+
+    if (newApp == nullptr) {
+        // Can't resolve new app — still un-boost the previous one
         if (prevApp != nullptr) {
-            qDebug() << "resetting" << prevApp->id() << "weight to default";
+            qDebug() << "[RESET] Clearing weight for" << prevApp->id() << "(switching to unmanaged PID)";
             prevApp->setCpuWeight(OptionalQULongLong());
             prevApp->setDeviceMemoryLow(m_nonBoostedGPUMemoryLimit);
+            delete prevApp;
         }
-        if (currentApp != nullptr) {
-            qDebug() << "setting" << currentApp->id() << "weight to" << (float)m_settings->boostedCpuWeight() / 100.
-                    << "times normal weight";
-            currentApp->setCpuWeight(m_settings->boostedCpuWeight());
-            currentApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
-        }
-    } else {
-        qDebug() << "Changed to different window of same app";
+        m_currentPid = pid;
+        m_currentAppid = appid;
+        m_currentApp = nullptr;
+        return;
     }
+
+    if (prevApp != nullptr) {
+        // Only reset if switching to a DIFFERENT cgroup.
+        // Games and launchers (faugus/heroic/steam) often share the same cgroup scope.
+        if (newApp->cgroup() != prevApp->cgroup()) {
+            qDebug() << "[RESET] Clearing weight for" << prevApp->id();
+            prevApp->setCpuWeight(OptionalQULongLong());
+            prevApp->setDeviceMemoryLow(m_nonBoostedGPUMemoryLimit);
+        } else {
+            qDebug() << "[SKIP RESET] Same cgroup scope" << prevApp->id();
+        }
+        delete prevApp;
+    }
+
+    qDebug() << "[BOOST] Setting weight to" << m_settings->boostedCpuWeight()
+             << "for" << newApp->id();
+    newApp->setCpuWeight(m_settings->boostedCpuWeight());
+    newApp->setDeviceMemoryLow(m_boostedGPUMemoryLimit);
+
     m_currentPid = pid;
     m_currentAppid = appid;
+    m_currentApp = newApp;
 }

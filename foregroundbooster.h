@@ -5,33 +5,33 @@
 #ifndef FOREGROUNDBOOSTER_H
 #define FOREGROUNDBOOSTER_H
 #include "boostersettings.h"
-#include <QHash>
-#include <QObject>
-#include <tasksmodel.h>
 #include <KApplicationScope>
+#include <QObject>
+#include <QTimer>
+#include <tasksmodel.h>
 
 class KApplicationScope;
 
-class ForegroundBooster : public QObject
-{
+class ForegroundBooster : public QObject {
+    Q_OBJECT
 public:
     ForegroundBooster(QObject *parent = nullptr);
     ~ForegroundBooster();
 
 public Q_SLOTS:
     void onActiveWindowChanged();
-    void onWindowRemoved(const QModelIndex &parent, int first, int last);
+    void onSwitchTimeout();
 
 private:
     TaskManager::TasksModel *m_tasksModel;
-
     BoosterSettings *m_settings;
-    uint m_currentPid;
+    uint m_currentPid = 0;
     QString m_currentAppid;
-    QHash<uint, KApplicationScope *> m_appsByPid;
+    KApplicationScope *m_currentApp = nullptr;
+    QTimer m_debounceTimer;
 
-   CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;
-   CGroupDeviceMemoryLimitList m_nonBoostedGPUMemoryLimit;
+    CGroupDeviceMemoryLimitList m_boostedGPUMemoryLimit;
+    CGroupDeviceMemoryLimitList m_nonBoostedGPUMemoryLimit;
 };
 
 #endif // FOREGROUNDBOOSTER_H
