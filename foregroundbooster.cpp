@@ -99,7 +99,7 @@ void ForegroundBooster::onActiveWindowChanged()
     if (!isWindow) return;
     if (pid == m_currentPid) return;
 
-    qDebug() << "Window switch pending: " << m_currentAppid << " → " << appid << " (waiting 200 ms)";
+    qDebug() << "Window switch pending: " << m_currentAppid << " -> " << appid << " (waiting 200 ms)";
     m_debounceTimer.start(200);
 }
 
@@ -119,17 +119,7 @@ void ForegroundBooster::onSwitchTimeout()
         return;
     }
 
-    // If switching between two game windows with the same appid, skip.
-    // Wine/Proton often changes PIDs without changing the actual window.
-    const bool prevWasGame = m_currentAppid.startsWith(QLatin1String("steam_app"));
-    const bool nowIsGame = appid.startsWith(QLatin1String("steam_app"));
-    if (appid == m_currentAppid && prevWasGame && nowIsGame) {
-        qDebug() << "Switch cancelled: same game window (PID flicker)" << appid;
-        m_currentPid = pid;
-        return;
-    }
-
-    qDebug() << "Switch confirmed: " << m_currentAppid << " → " << appid;
+    qDebug() << "Switch confirmed: " << m_currentAppid << " -> " << appid;
 
     KApplicationScope *newApp = KApplicationScope::fromPid(pid, nullptr);
     const auto prevApp = m_currentApp;
@@ -149,8 +139,8 @@ void ForegroundBooster::onSwitchTimeout()
     }
 
     if (prevApp != nullptr) {
-        // Only reset if switching to a DIFFERENT cgroup.
-        // Games and launchers (faugus/heroic/steam) often share the same cgroup scope.
+        // Guard - Only reset if switching to a DIFFERENT cgroup.
+        // Games and launchers (faugus/heroic/steam) may share the same cgroup scope depending on configuration.
         if (newApp->cgroup() != prevApp->cgroup()) {
             qDebug() << "[RESET] Clearing weight for" << prevApp->id();
             prevApp->setCpuWeight(OptionalQULongLong());
