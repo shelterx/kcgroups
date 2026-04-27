@@ -42,11 +42,15 @@ ForegroundBooster::ForegroundBooster(QObject *parent)
             auto spacePos = line.find(' ');
             if (spacePos == std::string::npos)
                 continue;
-            const auto device = line.substr(0, spacePos);
-            limit.path = QString::fromStdString(device);
 
-            const unsigned long value = std::stoul(line.substr(spacePos + 1, line.size()));
+            bool ok = false;
+            const unsigned long value = QString::fromStdString(line.substr(spacePos + 1)).toULong(&ok);
+            if (!ok) {
+                qWarning() << "Failed to parse dmem.capacity line:" << QString::fromStdString(line);
+                continue;
+            }
 
+            limit.path = QString::fromStdString(line.substr(0, spacePos));
             limit.limit = value;
             m_boostedGPUMemoryLimit.push_back(limit);
             limit.limit = 0;
